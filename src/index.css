@@ -61,19 +61,23 @@
     @apply mt-20;
 
     & ul {
-      @apply flex flex-row overflow-y-auto gap-5 -mt-10 w-full hide-scrollbar;
+      @apply flex gap-5 overflow-x-auto hide-scrollbar py-5;
     }
 
     & ul li {
-      @apply min-w-[230px] flex flex-row items-center;
+      @apply flex-shrink-0 w-[150px] flex flex-col items-center;
     }
 
-    & ul li p {
-      @apply fancy-text mt-[22px] text-nowrap;
+    & ul li p.movie-rank {
+      @apply text-lg font-bold text-white mb-1;
     }
 
     & ul li img {
-      @apply w-[127px] h-[163px] rounded-lg object-cover -ml-3.5;
+      @apply w-full h-[225px] object-cover rounded-lg;
+    }
+
+    & ul li p.movie-title {
+      @apply mt-2 text-sm text-white text-center truncate;
     }
   }
 
