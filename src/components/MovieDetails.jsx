@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Footer from "./Footer.jsx";
 
 const API_KEY = import.meta.env.VITE_TMDB_API_KEY;
@@ -12,6 +12,45 @@ const API_OPTIONS = {
     accept: "application/json",
     Authorization: `Bearer ${API_KEY}`,
   },
+};
+
+const HLSPlayer = ({ src }) => {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return;
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+    } else {
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.10/hls.min.js";
+      script.onload = () => {
+        if (window.Hls.isSupported()) {
+          const hls = new window.Hls();
+          hls.loadSource(src);
+          hls.attachMedia(video);
+        }
+      };
+      document.head.appendChild(script);
+    }
+  }, [src]);
+
+  return (
+    <div
+      className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-white/10"
+      style={{ paddingTop: "56.25%" }}
+    >
+      <video
+        ref={videoRef}
+        controls
+        autoPlay
+        className="absolute inset-0 w-full h-full bg-black"
+      />
+    </div>
+  );
 };
 
 const MovieDetails = () => {
@@ -75,41 +114,27 @@ const MovieDetails = () => {
     setStreamError("");
     setStreamingUrl(null);
     try {
-      console.log("Fetching streaming link for movie ID:", id);
       const response = await fetch(
         `${STREAMING_BASE_URL}/movie/streaming/link/${id}`,
       );
-      console.log("Streaming API response status:", response.status);
-      
+
       if (!response.ok) {
         throw new Error(`Streaming API returned status ${response.status}`);
       }
-      
-      const data = await response.json();
-      console.log("Streaming API response data:", data);
-      
-      const url =
-        data.link ||
-        data.url ||
-        data.streaming_url ||
-        data.streamingUrl ||
-        (typeof data === "string" ? data : null);
-      
-      console.log("Extracted streaming URL:", url);
-      
-      if (!url) {
-        console.error("No valid URL found in response. Response structure:", Object.keys(data));
+
+      const text = await response.text();
+      const url = text.trim().replace(/^"|"$/g, "");
+
+      if (!url || !url.startsWith("http")) {
         throw new Error("No streaming link returned from API");
       }
-      
+
       setStreamingUrl(url);
       setIsWatching(true);
     } catch (error) {
       console.error("Watch Now error:", error.message);
       setStreamError(
-        error.message?.includes("Streaming")
-          ? error.message
-          : "Streaming is currently unavailable for this title. Please try again later.",
+        "Streaming is currently unavailable for this title. Please try again later.",
       );
     } finally {
       setIsStreamLoading(false);
@@ -168,11 +193,9 @@ const MovieDetails = () => {
         ) : (
           <div className="w-full h-full bg-dark-100" />
         )}
-        {/* Gradient overlays */}
         <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/60 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-primary/80 via-transparent to-transparent" />
 
-        {/* Back button */}
         <Link
           to="/"
           className="absolute top-6 left-6 flex items-center gap-2 text-light-200 hover:text-white transition-colors group"
@@ -275,7 +298,7 @@ const MovieDetails = () => {
         </div>
 
         {/* Streaming Player */}
-        {isWatching && streamingUrl ? (
+        {isWatching && streamingUrl && (
           <section className="mt-12">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">Now Playing</h2>
@@ -289,25 +312,13 @@ const MovieDetails = () => {
                 ✕ Close Player
               </button>
             </div>
-            <div
-              className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-white/10"
-              style={{ paddingTop: "56.25%" }}
-            >
-              <iframe
-                key={streamingUrl}
-                src={streamingUrl}
-                className="absolute inset-0 w-full h-full"
-                allowFullScreen
-                allow="autoplay; encrypted-media; picture-in-picture"
-                title={`Watch ${movie.title}`}
-              />
-            </div>
+            <HLSPlayer src={streamingUrl} />
             <p className="mt-3 text-xs text-gray-500 text-center">
               Having trouble? Try disabling your ad blocker or refreshing the
               page.
             </p>
           </section>
-        ) : null}
+        )}
 
         {/* Trailer */}
         {videoKey && !isWatching && (

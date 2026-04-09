@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Footer from "./Footer.jsx";
 
 const API_KEY = import.meta.env.VITE_TMDB_API_KEY;
@@ -12,6 +12,45 @@ const API_OPTIONS = {
     accept: "application/json",
     Authorization: `Bearer ${API_KEY}`,
   },
+};
+
+const HLSPlayer = ({ src }) => {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return;
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+    } else {
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.10/hls.min.js";
+      script.onload = () => {
+        if (window.Hls.isSupported()) {
+          const hls = new window.Hls();
+          hls.loadSource(src);
+          hls.attachMedia(video);
+        }
+      };
+      document.head.appendChild(script);
+    }
+  }, [src]);
+
+  return (
+    <div
+      className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-white/10"
+      style={{ paddingTop: "56.25%" }}
+    >
+      <video
+        ref={videoRef}
+        controls
+        autoPlay
+        className="absolute inset-0 w-full h-full bg-black"
+      />
+    </div>
+  );
 };
 
 const TVDetails = () => {
@@ -37,7 +76,6 @@ const TVDetails = () => {
       if (!response.ok) throw new Error("Failed to fetch show details");
       const data = await response.json();
       setShow(data);
-      // default to season 1
       const s1 = data.seasons?.find((s) => s.season_number === 1);
       if (s1) setEpisodeCount(s1.episode_count);
     } catch (error) {
@@ -105,40 +143,25 @@ const TVDetails = () => {
     setStreamingUrl(null);
     try {
       const url = `${STREAMING_BASE_URL}/series/streaming/link/${id}/S/${selectedSeason}/E/${selectedEpisode}`;
-      console.log("Fetching streaming link for TV episode:", url);
-      
       const response = await fetch(url);
-      console.log("Streaming API response status:", response.status);
-      
+
       if (!response.ok) {
         throw new Error(`Streaming API returned status ${response.status}`);
       }
-      
-      const data = await response.json();
-      console.log("Streaming API response data:", data);
-      
-      const streamUrl =
-        data.link ||
-        data.url ||
-        data.streaming_url ||
-        data.streamingUrl ||
-        (typeof data === "string" ? data : null);
-      
-      console.log("Extracted streaming URL:", streamUrl);
-      
-      if (!streamUrl) {
-        console.error("No valid URL found in response. Response structure:", Object.keys(data));
+
+      const text = await response.text();
+      const streamUrl = text.trim().replace(/^"|"$/g, "");
+
+      if (!streamUrl || !streamUrl.startsWith("http")) {
         throw new Error("No streaming link returned from API");
       }
-      
+
       setStreamingUrl(streamUrl);
       setIsWatching(true);
     } catch (error) {
       console.error("Watch Episode error:", error.message);
       setStreamError(
-        error.message?.includes("Streaming")
-          ? error.message
-          : "Streaming is currently unavailable for this episode. Please try again later.",
+        "Streaming is currently unavailable for this episode. Please try again later.",
       );
     } finally {
       setIsStreamLoading(false);
@@ -180,7 +203,6 @@ const TVDetails = () => {
 
   const genres = show.genres?.map((g) => g.name) || [];
 
-  // Filter out Season 0 (Specials) for cleaner UX
   const seasons = show.seasons?.filter((s) => s.season_number > 0) || [];
 
   return (
@@ -269,7 +291,6 @@ const TVDetails = () => {
         <section className="mt-10 bg-dark-100 rounded-2xl p-6 border border-white/5">
           <h2 className="text-lg font-bold mb-5 text-white">Select Episode</h2>
 
-          {/* Season Tabs */}
           {seasons.length > 0 && (
             <div className="mb-5">
               <p className="text-xs text-gray-400 uppercase tracking-widest mb-3">
@@ -293,7 +314,6 @@ const TVDetails = () => {
             </div>
           )}
 
-          {/* Episode Selector */}
           <div className="mb-6">
             <p className="text-xs text-gray-400 uppercase tracking-widest mb-3">
               Episode
@@ -322,7 +342,6 @@ const TVDetails = () => {
             </div>
           </div>
 
-          {/* Watch Button */}
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={handleWatchEpisode}
@@ -354,7 +373,7 @@ const TVDetails = () => {
         </section>
 
         {/* Streaming Player */}
-        {isWatching && streamingUrl ? (
+        {isWatching && streamingUrl && (
           <section className="mt-10">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">
@@ -370,25 +389,13 @@ const TVDetails = () => {
                 ✕ Close Player
               </button>
             </div>
-            <div
-              className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-white/10"
-              style={{ paddingTop: "56.25%" }}
-            >
-              <iframe
-                key={streamingUrl}
-                src={streamingUrl}
-                className="absolute inset-0 w-full h-full"
-                allowFullScreen
-                allow="autoplay; encrypted-media; picture-in-picture"
-                title={`Watch ${show.name} S${selectedSeason}E${selectedEpisode}`}
-              />
-            </div>
+            <HLSPlayer src={streamingUrl} />
             <p className="mt-3 text-xs text-gray-500 text-center">
               Having trouble? Try disabling your ad blocker or refreshing the
               page.
             </p>
           </section>
-        ) : null}
+        )}
 
         {/* Trailer */}
         {videoKey && !isWatching && (
