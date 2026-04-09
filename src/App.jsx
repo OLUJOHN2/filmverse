@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Routes, Route, Link } from "react-router-dom"; // <-- add Link here
+import { Routes, Route, Link } from "react-router-dom";
 import Search from "./components/Search.jsx";
 import Spinner from "./components/Spinner.jsx";
 import MovieCard from "./components/MovieCard.jsx";
-import MovieDetails from "./components/MovieDetails"; // <-- usually MovieDetails goes in pages
+import MovieDetails from "./components/MovieDetails";
+import TVDetails from "./components/TVDetails";
 import { useDebounce } from "react-use";
 import Footer from "./components/Footer.jsx";
 
@@ -25,25 +26,44 @@ const App = () => {
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  // "movie" | "tv"
+  const [activeTab, setActiveTab] = useState("movie");
 
   useDebounce(() => setDebouncedSearchTerm(searchTerm), 500, [searchTerm]);
 
-  const fetchMovies = async (query = "") => {
+  const fetchContent = async (query = "", type = "movie") => {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const endpoint = query
-        ? `${API_BASE_URL}/search/movie?query=${encodeURIComponent(query)}`
-        : `${API_BASE_URL}/discover/movie?sort_by=popularity.desc`;
+      let endpoint;
+      if (query) {
+        endpoint = `${API_BASE_URL}/search/${type}?query=${encodeURIComponent(query)}`;
+      } else {
+        endpoint =
+          type === "movie"
+            ? `${API_BASE_URL}/discover/movie?sort_by=popularity.desc`
+            : `${API_BASE_URL}/discover/tv?sort_by=popularity.desc`;
+      }
 
       const response = await fetch(endpoint, API_OPTIONS);
-      if (!response.ok) throw new Error("Failed to fetch movies");
+      if (!response.ok) throw new Error("Failed to fetch content");
 
       const data = await response.json();
-      setMovieList(data.results || []);
+      // Normalize TV shows to have a `title` and `release_date` for MovieCard compatibility
+      const results = (data.results || []).map((item) =>
+        type === "tv"
+          ? {
+              ...item,
+              title: item.name,
+              release_date: item.first_air_date,
+              media_type: "tv",
+            }
+          : { ...item, media_type: "movie" },
+      );
+      setMovieList(results);
     } catch (error) {
       console.error(error);
-      setErrorMessage("Error fetching movies. Please try again later.");
+      setErrorMessage("Error fetching content. Please try again later.");
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +74,6 @@ const App = () => {
       const endpoint = `${API_BASE_URL}/trending/movie/week`;
       const response = await fetch(endpoint, API_OPTIONS);
       if (!response.ok) throw new Error("Failed to fetch trending movies");
-
       const data = await response.json();
       setTrendingMovies(data.results || []);
     } catch (error) {
@@ -63,12 +82,18 @@ const App = () => {
   };
 
   useEffect(() => {
-    fetchMovies(debouncedSearchTerm);
-  }, [debouncedSearchTerm]);
+    fetchContent(debouncedSearchTerm, activeTab);
+  }, [debouncedSearchTerm, activeTab]);
 
   useEffect(() => {
     fetchTrendingMovies();
   }, []);
+
+  // When tab changes, reset search
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSearchTerm("");
+  };
 
   return (
     <Routes>
@@ -86,8 +111,8 @@ const App = () => {
                 />
                 <img src="./hero.png" alt="Hero Banner" />
                 <h1>
-                  Find <span className="text-gradient">Movies</span> You'll
-                  Enjoy Without the Hassle
+                  Find <span className="text-gradient">Movies & Shows</span>{" "}
+                  You'll Enjoy Without the Hassle
                 </h1>
                 <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
               </header>
@@ -118,15 +143,51 @@ const App = () => {
               )}
 
               <section className="all-movies">
-                <h2>All Movies</h2>
+                {/* Movie / TV Tabs */}
+                <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+                  <h2 className="mb-0">
+                    {activeTab === "movie" ? "Movies" : "TV Shows"}
+                  </h2>
+                  <div className="flex gap-2 bg-white/5 rounded-xl p-1 border border-white/10">
+                    <button
+                      onClick={() => handleTabChange("movie")}
+                      className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                        activeTab === "movie"
+                          ? "bg-purple-600 text-white shadow-md"
+                          : "text-light-200 hover:text-white"
+                      }`}
+                    >
+                      🎬 Movies
+                    </button>
+                    <button
+                      onClick={() => handleTabChange("tv")}
+                      className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                        activeTab === "tv"
+                          ? "bg-purple-600 text-white shadow-md"
+                          : "text-light-200 hover:text-white"
+                      }`}
+                    >
+                      📺 TV Shows
+                    </button>
+                  </div>
+                </div>
+
                 {isLoading ? (
                   <Spinner />
                 ) : errorMessage ? (
                   <p className="text-red-500">{errorMessage}</p>
                 ) : (
                   <ul className="movie-list">
-                    {movieList.map((movie) => (
-                      <MovieCard key={movie.id} movie={movie} />
+                    {movieList.map((item) => (
+                      <MovieCard
+                        key={item.id}
+                        movie={item}
+                        linkTo={
+                          item.media_type === "tv"
+                            ? `/tv/${item.id}`
+                            : `/movie/${item.id}`
+                        }
+                      />
                     ))}
                   </ul>
                 )}
@@ -139,6 +200,7 @@ const App = () => {
       />
 
       <Route path="/movie/:id" element={<MovieDetails />} />
+      <Route path="/tv/:id" element={<TVDetails />} />
     </Routes>
   );
 };
